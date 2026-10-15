@@ -1,6 +1,7 @@
 package com.example.truedamage;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerLevel;
@@ -13,15 +14,58 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(LivingEntity.class)
 public abstract class DamageMixin {
     @Unique
+    private static boolean truedamage$enabled = true;
+
+    @Unique
     private float truedamage$healthBefore;
 
     @Unique
     private float truedamage$absorptionBefore;
+
+    @Inject(method = "tick", at = @At("HEAD"))
+    private void truedamage$registerCommand(CallbackInfo ci) {
+        if ((Object) this instanceof ServerPlayer player && player.level() instanceof ServerLevel serverLevel) {
+            var commands = serverLevel.getServer().getCommands();
+            if (commands.getDispatcher().getRoot().getChild("damagechat") == null) {
+                commands.getDispatcher().register(
+                        Commands.literal("damagechat")
+                                .executes(ctx -> {
+                                    truedamage$enabled = !truedamage$enabled;
+                                    truedamage$sendStatus(ctx.getSource().getEntity());
+                                    return 1;
+                                })
+                                .then(Commands.literal("on").executes(ctx -> {
+                                    truedamage$enabled = true;
+                                    truedamage$sendStatus(ctx.getSource().getEntity());
+                                    return 1;
+                                }))
+                                .then(Commands.literal("off").executes(ctx -> {
+                                    truedamage$enabled = false;
+                                    truedamage$sendStatus(ctx.getSource().getEntity());
+                                    return 1;
+                                }))
+                );
+                commands.sendCommands(player);
+            }
+        }
+    }
+
+    @Unique
+    private static void truedamage$sendStatus(Entity entity) {
+        if (entity instanceof ServerPlayer player) {
+            MutableComponent status = Component.empty()
+                    .append(Component.literal("[Damage] ").withStyle(ChatFormatting.GRAY))
+                    .append(Component.literal(truedamage$enabled ? "Damage messages turned ON" : "Damage messages turned OFF")
+                            .withStyle(truedamage$enabled ? ChatFormatting.GREEN : ChatFormatting.RED, ChatFormatting.BOLD));
+            player.sendSystemMessage(status);
+        }
+    }
 
     @Inject(
             method = "hurtServer",
@@ -45,6 +89,10 @@ public abstract class DamageMixin {
             )
     )
     private void truedamage$afterHurt(ServerLevel level, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
+        if (!truedamage$enabled) {
+            return;
+        }
+
         LivingEntity target = (LivingEntity) (Object) this;
         ServerPlayer attacker = truedamage$resolveAttacker(source);
         if (attacker == null) {
