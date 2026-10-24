@@ -11,8 +11,8 @@
     "truedamage.mixins.json"
   ],
   "depends": {
-    "fabricloader": ">=0.19.0",
-    "minecraft": "~26.2",
+    "fabricloader": "*",
+    "minecraft": ">=26.2",
     "java": ">=25"
   }
 }
